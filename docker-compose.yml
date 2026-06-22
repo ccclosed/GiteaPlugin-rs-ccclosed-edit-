@@ -6,6 +6,7 @@ services:
     environment:
       - USER_UID=1000
       - USER_GID=1000
+      - GITEA__webhook__ALLOWED_HOST_LIST=*
     restart: always
     ports:
       - "3001:3000"
@@ -31,7 +32,7 @@ services:
       - JENKINS_URL=http://jenkins:8080
       - JENKINS_USER=admin
       - JENKINS_TOKEN=admin
-      - JENKINS_JOB=test-job
+      - JENKINS_JOB=test-job-2
       - GITEA_URL=http://gitea:3000
       - GITEA_TOKEN=token
     ports:

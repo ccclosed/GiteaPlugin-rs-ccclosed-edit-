@@ -23,14 +23,22 @@ pub struct Repository {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PayloadUser {
+    pub name: String,
+    pub email: String,
+    pub username: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Commit {
     pub id: String,
     pub message: String,
     pub url: String,
-    pub author: User,
-    pub committer: User,
+    pub author: PayloadUser,
+    pub committer: PayloadUser,
     pub timestamp: String,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequest {

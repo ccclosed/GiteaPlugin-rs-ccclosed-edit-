@@ -40,19 +40,22 @@ pub async fn handle(
 
     match event_type {
         "push" => {
-            if let Ok(event) = serde_json::from_slice::<PushEvent>(&body_bytes) {
-                if let Some(trigger) = state.processor.process_push_event(event) {
-                    let params: Vec<(&str, &str)> = trigger.params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-                    if let Err(e) = state.jenkins_client.trigger_build_with_params(&trigger.job_name, params).await {
-                        error!("Failed to trigger Jenkins: {:?}", e);
-                    } else {
-                        info!("Successfully triggered Jenkins job: {}", trigger.job_name);
+            match serde_json::from_slice::<PushEvent>(&body_bytes) {
+                Ok(event) => {
+                    if let Some(trigger) = state.processor.process_push_event(event) {
+                        let params: Vec<(&str, &str)> = trigger.params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                        if let Err(e) = state.jenkins_client.trigger_build_with_params(&trigger.job_name, params).await {
+                            error!("Failed to trigger Jenkins: {:?}", e);
+                        } else {
+                            info!("Successfully triggered Jenkins job: {}", trigger.job_name);
+                        }
                     }
+                    StatusCode::OK
                 }
-                StatusCode::OK
-            } else {
-                error!("Failed to parse PushEvent");
-                StatusCode::BAD_REQUEST
+                Err(e) => {
+                    error!("Failed to parse PushEvent: {:?}", e);
+                    StatusCode::BAD_REQUEST
+                }
             }
         }
         "pull_request" => {

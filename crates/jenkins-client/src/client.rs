@@ -32,6 +32,7 @@ impl JenkinsClient {
         Self {
             client: reqwest::Client::builder()
                 .no_proxy()
+                .cookie_store(true)
                 .build()
                 .unwrap(),
             base_url: base_url.trim_end_matches('/').to_string(),

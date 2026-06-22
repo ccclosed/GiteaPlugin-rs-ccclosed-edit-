@@ -77,7 +77,7 @@ impl EventProcessor {
 mod tests {
     use super::*;
     use gitea_client::events::{PushEvent, PullRequestEvent};
-    use gitea_client::models::{User, Repository, Commit, PullRequest, PRBranchInfo};
+    use gitea_client::models::{User, Repository, Commit, PullRequest, PRBranchInfo, PayloadUser};
 
     fn mock_user() -> User {
         User {
@@ -86,6 +86,25 @@ mod tests {
             full_name: None,
             email: None,
             avatar_url: None,
+        }
+    }
+
+    fn mock_payload_user() -> PayloadUser {
+        PayloadUser {
+            name: "Test User".to_string(),
+            email: "test@example.com".to_string(),
+            username: Some("testuser".to_string()),
+        }
+    }
+
+    fn mock_commit(id: &str) -> Commit {
+        Commit {
+            id: id.to_string(),
+            message: "Test commit".to_string(),
+            url: format!("http://gitea/test/{id}"),
+            author: mock_payload_user(),
+            committer: mock_payload_user(),
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
         }
     }
 
@@ -116,8 +135,8 @@ mod tests {
                 id: "456".to_string(),
                 message: "msg".to_string(),
                 url: "url".to_string(),
-                author: mock_user(),
-                committer: mock_user(),
+                author: mock_payload_user(),
+                committer: mock_payload_user(),
                 timestamp: "time".to_string(),
             }),
             repository: mock_repo(),
