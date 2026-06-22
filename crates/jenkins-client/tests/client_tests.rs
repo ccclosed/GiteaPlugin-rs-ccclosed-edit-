@@ -1,7 +1,7 @@
 use jenkins_client::client::JenkinsClient;
-use wiremock::matchers::{method, path, header, query_param};
-use wiremock::{Mock, MockServer, ResponseTemplate};
 use serde_json::json;
+use wiremock::matchers::{header, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn test_get_crumb_success() {
@@ -17,7 +17,7 @@ async fn test_get_crumb_success() {
         .await;
 
     let client = JenkinsClient::new(mock_server.uri(), "admin".to_string(), "token".to_string());
-    
+
     let crumb = client.get_crumb().await.unwrap();
     assert_eq!(crumb.field, "Jenkins-Crumb");
     assert_eq!(crumb.crumb, "1234567890abcdef");
@@ -45,9 +45,9 @@ async fn test_trigger_build_with_params() {
         .await;
 
     let client = JenkinsClient::new(mock_server.uri(), "admin".to_string(), "token".to_string());
-    
+
     let params = vec![("BRANCH_NAME", "main"), ("COMMIT_SHA", "abc1234")];
     let result = client.trigger_build_with_params("test-job", &params).await;
-    
+
     assert!(result.is_ok());
 }

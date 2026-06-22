@@ -1,6 +1,6 @@
+use crate::models::CommitStatus;
 use reqwest::{Client, Error as ReqwestError};
 use thiserror::Error;
-use crate::models::CommitStatus;
 
 #[derive(Error, Debug)]
 pub enum GiteaClientError {
@@ -19,10 +19,7 @@ pub struct GiteaClient {
 impl GiteaClient {
     pub fn new(base_url: String, token: String) -> Self {
         Self {
-            client: reqwest::Client::builder()
-                .no_proxy()
-                .build()
-                .unwrap(),
+            client: reqwest::Client::builder().no_proxy().build().unwrap(),
             base_url: base_url.trim_end_matches('/').to_string(),
             token,
         }
@@ -35,9 +32,14 @@ impl GiteaClient {
         sha: &str,
         status: &CommitStatus,
     ) -> Result<(), GiteaClientError> {
-        let url = format!("{}/api/v1/repos/{}/{}/statuses/{}", self.base_url, owner, repo, sha);
-        
-        let response = self.client.post(&url)
+        let url = format!(
+            "{}/api/v1/repos/{}/{}/statuses/{}",
+            self.base_url, owner, repo, sha
+        );
+
+        let response = self
+            .client
+            .post(&url)
             .header("Authorization", format!("token {}", self.token))
             .json(status)
             .send()

@@ -39,7 +39,6 @@ pub struct Commit {
     pub timestamp: String,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequest {
     pub id: i64,

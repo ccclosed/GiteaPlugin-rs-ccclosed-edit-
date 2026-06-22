@@ -1,13 +1,13 @@
+use crate::AppState;
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
+use gitea_client::events::{GiteaEvent, PullRequestEvent, PushEvent};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use crate::AppState;
-use gitea_client::events::{GiteaEvent, PushEvent, PullRequestEvent};
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -19,7 +19,9 @@ pub async fn handle(
 ) -> impl IntoResponse {
     // 1. Verify HMAC if secret is configured
     if let Some(secret) = &state.webhook_secret {
-        let signature = headers.get("X-Gitea-Signature").and_then(|v| v.to_str().ok());
+        let signature = headers
+            .get("X-Gitea-Signature")
+            .and_then(|v| v.to_str().ok());
         if let Some(sig) = signature {
             let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
             mac.update(&body_bytes);
@@ -35,17 +37,24 @@ pub async fn handle(
     }
 
     // 2. Parse event type
-    let event_type_str = headers.get("X-Gitea-Event").and_then(|v| v.to_str().ok()).unwrap_or("unknown");
+    let event_type_str = headers
+        .get("X-Gitea-Event")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown");
     info!("Received event: {}", event_type_str);
 
     let event: GiteaEvent = match event_type_str {
-        "push" => serde_json::from_slice::<PushEvent>(&body_bytes).map(GiteaEvent::Push),
-        "pull_request" => serde_json::from_slice::<PullRequestEvent>(&body_bytes).map(GiteaEvent::PullRequest),
+        "push" => {
+            serde_json::from_slice::<PushEvent>(&body_bytes).map(|e| GiteaEvent::Push(Box::new(e)))
+        }
+        "pull_request" => serde_json::from_slice::<PullRequestEvent>(&body_bytes)
+            .map(|e| GiteaEvent::PullRequest(Box::new(e))),
         _ => {
             info!("Ignored event type: {}", event_type_str);
             return StatusCode::OK; // Acknowledge unsupported events
         }
-    }.unwrap_or(GiteaEvent::Unknown(serde_json::Value::Null));
+    }
+    .unwrap_or(GiteaEvent::Unknown(serde_json::Value::Null));
 
     if let GiteaEvent::Unknown(_) = event {
         error!("Failed to parse event: {}", event_type_str);
@@ -53,7 +62,11 @@ pub async fn handle(
     }
 
     if let Some(trigger) = state.processor.process(event) {
-        if let Err(e) = state.jenkins_client.trigger_build_with_params(&trigger.job_name, &trigger.params).await {
+        if let Err(e) = state
+            .jenkins_client
+            .trigger_build_with_params(&trigger.job_name, &trigger.params)
+            .await
+        {
             error!("Failed to trigger Jenkins: {:?}", e);
         } else {
             info!("Successfully triggered Jenkins job: {}", trigger.job_name);

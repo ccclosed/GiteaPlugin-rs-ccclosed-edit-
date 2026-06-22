@@ -1,6 +1,6 @@
 use gitea_client::client::GiteaClient;
 use gitea_client::models::CommitStatus;
-use wiremock::matchers::{method, path, header, body_json_string};
+use wiremock::matchers::{body_json_string, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
@@ -26,9 +26,11 @@ async fn test_create_commit_status_success() {
         .await;
 
     let client = GiteaClient::new(mock_server.uri(), "mytoken".to_string());
-    
-    let result = client.create_commit_status("myorg", "myrepo", "abcdef123456", &expected_status).await;
-    
+
+    let result = client
+        .create_commit_status("myorg", "myrepo", "abcdef123456", &expected_status)
+        .await;
+
     assert!(result.is_ok());
 }
 
@@ -51,9 +53,11 @@ async fn test_create_commit_status_failure() {
         .await;
 
     let client = GiteaClient::new(mock_server.uri(), "mytoken".to_string());
-    
-    let result = client.create_commit_status("myorg", "myrepo", "abcdef123456", &status).await;
-    
+
+    let result = client
+        .create_commit_status("myorg", "myrepo", "abcdef123456", &status)
+        .await;
+
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
     assert!(err_msg.contains("API Error: 404 - Not Found"));

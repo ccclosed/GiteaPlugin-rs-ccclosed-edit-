@@ -1,5 +1,5 @@
+use crate::models::{Commit, PullRequest, Repository, User};
 use serde::{Deserialize, Serialize};
-use crate::models::{User, Repository, Commit, PullRequest};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushEvent {
@@ -27,7 +27,7 @@ pub struct PullRequestEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum GiteaEvent {
-    Push(PushEvent),
-    PullRequest(PullRequestEvent),
+    Push(Box<PushEvent>),
+    PullRequest(Box<PullRequestEvent>),
     Unknown(serde_json::Value),
 }

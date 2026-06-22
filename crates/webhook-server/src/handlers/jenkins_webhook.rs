@@ -1,12 +1,12 @@
+use crate::AppState;
 use axum::{
-    extract::{State, Json},
+    extract::{Json, State},
     http::StatusCode,
     response::IntoResponse,
 };
-use serde::Deserialize;
-use crate::AppState;
 use gitea_client::models::CommitStatus;
-use tracing::{info, error};
+use serde::Deserialize;
+use tracing::{error, info};
 
 #[derive(Deserialize)]
 pub struct JenkinsStatusPayload {
@@ -23,7 +23,10 @@ pub async fn handle(
     State(state): State<AppState>,
     Json(payload): Json<JenkinsStatusPayload>,
 ) -> impl IntoResponse {
-    info!("Received Jenkins status update for {}/{} @ {}", payload.repo_owner, payload.repo_name, payload.commit_sha);
+    info!(
+        "Received Jenkins status update for {}/{} @ {}",
+        payload.repo_owner, payload.repo_name, payload.commit_sha
+    );
 
     let gitea_status = match payload.build_status.as_str() {
         "SUCCESS" => "success",
@@ -40,12 +43,16 @@ pub async fn handle(
         context: Some(payload.context),
     };
 
-    match state.gitea_client.create_commit_status(
-        &payload.repo_owner,
-        &payload.repo_name,
-        &payload.commit_sha,
-        &status,
-    ).await {
+    match state
+        .gitea_client
+        .create_commit_status(
+            &payload.repo_owner,
+            &payload.repo_name,
+            &payload.commit_sha,
+            &status,
+        )
+        .await
+    {
         Ok(_) => StatusCode::OK,
         Err(e) => {
             error!("Failed to update Gitea commit status: {:?}", e);

@@ -1,4 +1,4 @@
-use gitea_client::events::{GiteaEvent, PushEvent, PullRequestEvent};
+use gitea_client::events::{GiteaEvent, PullRequestEvent, PushEvent};
 use serde::Serialize;
 use tracing::info;
 
@@ -33,17 +33,23 @@ impl EventProcessor {
     #[tracing::instrument(skip(self, event))]
     pub fn process(&self, event: GiteaEvent) -> Option<JenkinsTriggerRequest> {
         match event {
-            GiteaEvent::Push(e) => self.process_push_event(e),
-            GiteaEvent::PullRequest(e) => self.process_pull_request_event(e),
+            GiteaEvent::Push(e) => self.process_push_event(*e),
+            GiteaEvent::PullRequest(e) => self.process_pull_request_event(*e),
             _ => None,
         }
     }
 
     fn process_push_event(&self, event: PushEvent) -> Option<JenkinsTriggerRequest> {
         info!("Processing push event for branch: {}", event.ref_field);
-        
-        let branch_name = event.ref_field.strip_prefix("refs/heads/").unwrap_or(&event.ref_field);
-        let commit_sha = event.head_commit.as_ref().map_or(event.after.as_str(), |h| h.id.as_str());
+
+        let branch_name = event
+            .ref_field
+            .strip_prefix("refs/heads/")
+            .unwrap_or(&event.ref_field);
+        let commit_sha = event
+            .head_commit
+            .as_ref()
+            .map_or(event.after.as_str(), |h| h.id.as_str());
 
         if commit_sha == "0000000000000000000000000000000000000000" {
             info!("Branch {} was deleted, ignoring trigger", branch_name);
@@ -63,7 +69,10 @@ impl EventProcessor {
     }
 
     fn process_pull_request_event(&self, event: PullRequestEvent) -> Option<JenkinsTriggerRequest> {
-        info!("Processing pull request event #{} action: {}", event.number, event.action);
+        info!(
+            "Processing pull request event #{} action: {}",
+            event.number, event.action
+        );
 
         if event.action == "closed" {
             info!("PR #{} closed, no trigger required", event.number);
@@ -86,8 +95,8 @@ impl EventProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gitea_client::events::{PushEvent, PullRequestEvent};
-    use gitea_client::models::{User, Repository, Commit, PullRequest, PRBranchInfo, PayloadUser};
+    use gitea_client::events::{PullRequestEvent, PushEvent};
+    use gitea_client::models::{Commit, PRBranchInfo, PayloadUser, PullRequest, Repository, User};
 
     fn mock_user() -> User {
         User {
@@ -143,7 +152,9 @@ mod tests {
             sender: mock_user(),
         };
 
-        let result = processor.process(GiteaEvent::Push(event)).unwrap();
+        let result = processor
+            .process(GiteaEvent::Push(Box::new(event)))
+            .unwrap();
         assert_eq!(result.job_name, "test-job");
         assert_eq!(result.params.branch_name, "main");
         assert_eq!(result.params.commit_sha, "456");
@@ -167,7 +178,7 @@ mod tests {
             sender: mock_user(),
         };
 
-        let result = processor.process(GiteaEvent::Push(event));
+        let result = processor.process(GiteaEvent::Push(Box::new(event)));
         assert!(result.is_none());
     }
 
@@ -204,7 +215,9 @@ mod tests {
             sender: mock_user(),
         };
 
-        let result = processor.process(GiteaEvent::PullRequest(event)).unwrap();
+        let result = processor
+            .process(GiteaEvent::PullRequest(Box::new(event)))
+            .unwrap();
         assert_eq!(result.job_name, "test-job");
         assert_eq!(result.params.branch_name, "feature");
         assert_eq!(result.params.commit_sha, "789");
@@ -246,7 +259,7 @@ mod tests {
             sender: mock_user(),
         };
 
-        let result = processor.process(GiteaEvent::PullRequest(event));
+        let result = processor.process(GiteaEvent::PullRequest(Box::new(event)));
         assert!(result.is_none());
     }
 }

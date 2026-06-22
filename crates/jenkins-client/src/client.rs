@@ -44,7 +44,9 @@ impl JenkinsClient {
     #[tracing::instrument(skip(self))]
     pub async fn get_crumb(&self) -> Result<CrumbResponse, JenkinsClientError> {
         let url = format!("{}/crumbIssuer/api/json", self.base_url);
-        let res = self.client.get(&url)
+        let res = self
+            .client
+            .get(&url)
             .basic_auth(&self.user, Some(&self.token))
             .send()
             .await?;
@@ -70,8 +72,10 @@ impl JenkinsClient {
         });
 
         let url = format!("{}/job/{}/buildWithParameters", self.base_url, job_name);
-        
-        let mut req = self.client.post(&url)
+
+        let mut req = self
+            .client
+            .post(&url)
             .basic_auth(&self.user, Some(&self.token))
             .header(crumb.field, crumb.crumb);
 
@@ -86,7 +90,10 @@ impl JenkinsClient {
             let status = res.status().as_u16();
             let text = res.text().await.unwrap_or_default();
             error!("Failed to trigger job: {} - {}", status, text);
-            Err(JenkinsClientError::ApiError { status, message: text })
+            Err(JenkinsClientError::ApiError {
+                status,
+                message: text,
+            })
         }
     }
 }
