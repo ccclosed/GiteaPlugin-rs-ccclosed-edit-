@@ -112,3 +112,6 @@ cargo test --all
 ## 📄 Документация архитектурных решений (ADR)
 Все значимые решения по изменению архитектуры документируются в папке `docs/adr/`.
 Смотрите [Index ADR](docs/adr/README.md) для деталей.
+
+## 📐 C4 Architecture Diagrams
+Визуальная архитектура проекта в формате C4 Model (Context, Container, Component) доступна в [docs/C4_ARCHITECTURE.md](docs/C4_ARCHITECTURE.md).
