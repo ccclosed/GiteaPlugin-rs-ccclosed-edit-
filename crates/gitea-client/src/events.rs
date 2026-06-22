@@ -25,22 +25,9 @@ pub struct PullRequestEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateEvent {
-    #[serde(rename = "ref")]
-    pub ref_field: String,
-    pub ref_type: String, // branch, tag
-    pub default_branch: String,
-    pub repository: Repository,
-    pub sender: User,
+#[serde(untagged)]
+pub enum GiteaEvent {
+    Push(PushEvent),
+    PullRequest(PullRequestEvent),
+    Unknown(serde_json::Value),
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeleteEvent {
-    #[serde(rename = "ref")]
-    pub ref_field: String,
-    pub ref_type: String, // branch, tag
-    pub repository: Repository,
-    pub sender: User,
-}
-
-// Additional events can be added later (Release, Repository, etc.)

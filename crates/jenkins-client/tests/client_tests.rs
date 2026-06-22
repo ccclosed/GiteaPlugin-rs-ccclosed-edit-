@@ -47,7 +47,7 @@ async fn test_trigger_build_with_params() {
     let client = JenkinsClient::new(mock_server.uri(), "admin".to_string(), "token".to_string());
     
     let params = vec![("BRANCH_NAME", "main"), ("COMMIT_SHA", "abc1234")];
-    let result = client.trigger_build_with_params("test-job", params).await;
+    let result = client.trigger_build_with_params("test-job", &params).await;
     
     assert!(result.is_ok());
 }

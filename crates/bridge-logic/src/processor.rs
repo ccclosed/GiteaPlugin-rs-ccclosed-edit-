@@ -1,9 +1,24 @@
-use gitea_client::events::{PushEvent, PullRequestEvent};
+use gitea_client::events::{GiteaEvent, PushEvent, PullRequestEvent};
+use serde::Serialize;
 use tracing::info;
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct BuildParams {
+    #[serde(rename = "BRANCH_NAME")]
+    pub branch_name: String,
+    #[serde(rename = "COMMIT_SHA")]
+    pub commit_sha: String,
+    #[serde(rename = "GITEA_REPO_URL")]
+    pub gitea_repo_url: String,
+    #[serde(rename = "EVENT_TYPE")]
+    pub event_type: String,
+    #[serde(rename = "PR_ID", skip_serializing_if = "Option::is_none")]
+    pub pr_id: Option<String>,
+}
 
 pub struct JenkinsTriggerRequest {
     pub job_name: String,
-    pub params: Vec<(String, String)>,
+    pub params: BuildParams,
 }
 
 pub struct EventProcessor {
@@ -16,37 +31,38 @@ impl EventProcessor {
     }
 
     #[tracing::instrument(skip(self, event))]
-    pub fn process_push_event(&self, event: PushEvent) -> Option<JenkinsTriggerRequest> {
+    pub fn process(&self, event: GiteaEvent) -> Option<JenkinsTriggerRequest> {
+        match event {
+            GiteaEvent::Push(e) => self.process_push_event(e),
+            GiteaEvent::PullRequest(e) => self.process_pull_request_event(e),
+            _ => None,
+        }
+    }
+
+    fn process_push_event(&self, event: PushEvent) -> Option<JenkinsTriggerRequest> {
         info!("Processing push event for branch: {}", event.ref_field);
         
         let branch_name = event.ref_field.strip_prefix("refs/heads/").unwrap_or(&event.ref_field);
-        let commit_sha = if let Some(head) = &event.head_commit {
-            head.id.as_str()
-        } else {
-            &event.after
-        };
+        let commit_sha = event.head_commit.as_ref().map_or(event.after.as_str(), |h| h.id.as_str());
 
-        // Don't trigger on delete
         if commit_sha == "0000000000000000000000000000000000000000" {
             info!("Branch {} was deleted, ignoring trigger", branch_name);
             return None;
         }
 
-        let params = vec![
-            ("BRANCH_NAME".to_string(), branch_name.to_string()),
-            ("COMMIT_SHA".to_string(), commit_sha.to_string()),
-            ("GITEA_REPO_URL".to_string(), event.repository.html_url.to_string()),
-            ("EVENT_TYPE".to_string(), "push".to_string()),
-        ];
-
         Some(JenkinsTriggerRequest {
             job_name: self.job_name.clone(),
-            params,
+            params: BuildParams {
+                branch_name: branch_name.to_string(),
+                commit_sha: commit_sha.to_string(),
+                gitea_repo_url: event.repository.html_url,
+                event_type: "push".to_string(),
+                pr_id: None,
+            },
         })
     }
 
-    #[tracing::instrument(skip(self, event))]
-    pub fn process_pull_request_event(&self, event: PullRequestEvent) -> Option<JenkinsTriggerRequest> {
+    fn process_pull_request_event(&self, event: PullRequestEvent) -> Option<JenkinsTriggerRequest> {
         info!("Processing pull request event #{} action: {}", event.number, event.action);
 
         if event.action == "closed" {
@@ -54,21 +70,15 @@ impl EventProcessor {
             return None;
         }
 
-        let pr_branch = &event.pull_request.head.ref_field;
-        let pr_sha = &event.pull_request.head.sha;
-        let pr_id_str = event.number.to_string();
-
-        let params = vec![
-            ("BRANCH_NAME".to_string(), pr_branch.to_string()),
-            ("COMMIT_SHA".to_string(), pr_sha.to_string()),
-            ("GITEA_REPO_URL".to_string(), event.repository.html_url.to_string()),
-            ("PR_ID".to_string(), pr_id_str),
-            ("EVENT_TYPE".to_string(), "pull_request".to_string()),
-        ];
-
         Some(JenkinsTriggerRequest {
             job_name: self.job_name.clone(),
-            params,
+            params: BuildParams {
+                branch_name: event.pull_request.head.ref_field,
+                commit_sha: event.pull_request.head.sha,
+                gitea_repo_url: event.repository.html_url,
+                event_type: "pull_request".to_string(),
+                pr_id: Some(event.number.to_string()),
+            },
         })
     }
 }
@@ -94,17 +104,6 @@ mod tests {
             name: "Test User".to_string(),
             email: "test@example.com".to_string(),
             username: Some("testuser".to_string()),
-        }
-    }
-
-    fn mock_commit(id: &str) -> Commit {
-        Commit {
-            id: id.to_string(),
-            message: "Test commit".to_string(),
-            url: format!("http://gitea/test/{id}"),
-            author: mock_payload_user(),
-            committer: mock_payload_user(),
-            timestamp: "2024-01-01T00:00:00Z".to_string(),
         }
     }
 
@@ -144,13 +143,13 @@ mod tests {
             sender: mock_user(),
         };
 
-        let result = processor.process_push_event(event).unwrap();
+        let result = processor.process(GiteaEvent::Push(event)).unwrap();
         assert_eq!(result.job_name, "test-job");
-        assert_eq!(result.params.len(), 4);
-        assert_eq!(result.params[0], ("BRANCH_NAME".to_string(), "main".to_string()));
-        assert_eq!(result.params[1], ("COMMIT_SHA".to_string(), "456".to_string()));
-        assert_eq!(result.params[2], ("GITEA_REPO_URL".to_string(), "http://gitea/user/repo".to_string()));
-        assert_eq!(result.params[3], ("EVENT_TYPE".to_string(), "push".to_string()));
+        assert_eq!(result.params.branch_name, "main");
+        assert_eq!(result.params.commit_sha, "456");
+        assert_eq!(result.params.gitea_repo_url, "http://gitea/user/repo");
+        assert_eq!(result.params.event_type, "push");
+        assert_eq!(result.params.pr_id, None);
     }
 
     #[test]
@@ -168,7 +167,7 @@ mod tests {
             sender: mock_user(),
         };
 
-        let result = processor.process_push_event(event);
+        let result = processor.process(GiteaEvent::Push(event));
         assert!(result.is_none());
     }
 
@@ -205,14 +204,13 @@ mod tests {
             sender: mock_user(),
         };
 
-        let result = processor.process_pull_request_event(event).unwrap();
+        let result = processor.process(GiteaEvent::PullRequest(event)).unwrap();
         assert_eq!(result.job_name, "test-job");
-        assert_eq!(result.params.len(), 5);
-        assert_eq!(result.params[0], ("BRANCH_NAME".to_string(), "feature".to_string()));
-        assert_eq!(result.params[1], ("COMMIT_SHA".to_string(), "789".to_string()));
-        assert_eq!(result.params[2], ("GITEA_REPO_URL".to_string(), "http://gitea/user/repo".to_string()));
-        assert_eq!(result.params[3], ("PR_ID".to_string(), "42".to_string()));
-        assert_eq!(result.params[4], ("EVENT_TYPE".to_string(), "pull_request".to_string()));
+        assert_eq!(result.params.branch_name, "feature");
+        assert_eq!(result.params.commit_sha, "789");
+        assert_eq!(result.params.gitea_repo_url, "http://gitea/user/repo");
+        assert_eq!(result.params.event_type, "pull_request");
+        assert_eq!(result.params.pr_id, Some("42".to_string()));
     }
 
     #[test]
@@ -248,7 +246,7 @@ mod tests {
             sender: mock_user(),
         };
 
-        let result = processor.process_pull_request_event(event);
+        let result = processor.process(GiteaEvent::PullRequest(event));
         assert!(result.is_none());
     }
 }

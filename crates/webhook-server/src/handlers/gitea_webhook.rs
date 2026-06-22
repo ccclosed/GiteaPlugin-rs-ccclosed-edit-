@@ -1,12 +1,12 @@
 use axum::{
-    extract::{State, Json},
+    extract::State,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use crate::AppState;
-use gitea_client::events::{PushEvent, PullRequestEvent};
+use gitea_client::events::{GiteaEvent, PushEvent, PullRequestEvent};
 use tracing::{info, warn, error};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -35,48 +35,30 @@ pub async fn handle(
     }
 
     // 2. Parse event type
-    let event_type = headers.get("X-Gitea-Event").and_then(|v| v.to_str().ok()).unwrap_or("unknown");
-    info!("Received event: {}", event_type);
+    let event_type_str = headers.get("X-Gitea-Event").and_then(|v| v.to_str().ok()).unwrap_or("unknown");
+    info!("Received event: {}", event_type_str);
 
-    match event_type {
-        "push" => {
-            match serde_json::from_slice::<PushEvent>(&body_bytes) {
-                Ok(event) => {
-                    if let Some(trigger) = state.processor.process_push_event(event) {
-                        let params: Vec<(&str, &str)> = trigger.params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-                        if let Err(e) = state.jenkins_client.trigger_build_with_params(&trigger.job_name, params).await {
-                            error!("Failed to trigger Jenkins: {:?}", e);
-                        } else {
-                            info!("Successfully triggered Jenkins job: {}", trigger.job_name);
-                        }
-                    }
-                    StatusCode::OK
-                }
-                Err(e) => {
-                    error!("Failed to parse PushEvent: {:?}", e);
-                    StatusCode::BAD_REQUEST
-                }
-            }
-        }
-        "pull_request" => {
-            if let Ok(event) = serde_json::from_slice::<PullRequestEvent>(&body_bytes) {
-                if let Some(trigger) = state.processor.process_pull_request_event(event) {
-                    let params: Vec<(&str, &str)> = trigger.params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-                    if let Err(e) = state.jenkins_client.trigger_build_with_params(&trigger.job_name, params).await {
-                        error!("Failed to trigger Jenkins: {:?}", e);
-                    } else {
-                        info!("Successfully triggered Jenkins job: {}", trigger.job_name);
-                    }
-                }
-                StatusCode::OK
-            } else {
-                error!("Failed to parse PullRequestEvent");
-                StatusCode::BAD_REQUEST
-            }
-        }
+    let event: GiteaEvent = match event_type_str {
+        "push" => serde_json::from_slice::<PushEvent>(&body_bytes).map(GiteaEvent::Push),
+        "pull_request" => serde_json::from_slice::<PullRequestEvent>(&body_bytes).map(GiteaEvent::PullRequest),
         _ => {
-            info!("Ignored event type: {}", event_type);
-            StatusCode::OK // Acknowledge unsupported events
+            info!("Ignored event type: {}", event_type_str);
+            return StatusCode::OK; // Acknowledge unsupported events
+        }
+    }.unwrap_or(GiteaEvent::Unknown(serde_json::Value::Null));
+
+    if let GiteaEvent::Unknown(_) = event {
+        error!("Failed to parse event: {}", event_type_str);
+        return StatusCode::BAD_REQUEST;
+    }
+
+    if let Some(trigger) = state.processor.process(event) {
+        if let Err(e) = state.jenkins_client.trigger_build_with_params(&trigger.job_name, &trigger.params).await {
+            error!("Failed to trigger Jenkins: {:?}", e);
+        } else {
+            info!("Successfully triggered Jenkins job: {}", trigger.job_name);
         }
     }
+
+    StatusCode::OK
 }

@@ -59,10 +59,10 @@ impl JenkinsClient {
     }
 
     #[tracing::instrument(skip(self, params))]
-    pub async fn trigger_build_with_params(
+    pub async fn trigger_build_with_params<T: serde::Serialize + ?Sized>(
         &self,
         job_name: &str,
-        params: Vec<(&str, &str)>,
+        params: &T,
     ) -> Result<(), JenkinsClientError> {
         let crumb = self.get_crumb().await.unwrap_or(CrumbResponse {
             field: "Jenkins-Crumb".to_string(),
@@ -75,9 +75,7 @@ impl JenkinsClient {
             .basic_auth(&self.user, Some(&self.token))
             .header(crumb.field, crumb.crumb);
 
-        if !params.is_empty() {
-            req = req.form(&params);
-        }
+        req = req.form(params);
 
         let res = req.send().await?;
 
